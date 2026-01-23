@@ -61,7 +61,7 @@ jobs:
         if: env.NEEDS_UPDATE == 'true'
         id: get_version
         run: |
-          $verOutput = & .\ollama\ollama.exe --version 2>&1
+          $verOutput = & .\ollama\ollama.exe --version 2>&1 | Out-String
           Write-Host "Version output: $verOutput"
           if ($verOutput -match "(\d+\.\d+\.\d+)") {
             $version = $matches[1]
