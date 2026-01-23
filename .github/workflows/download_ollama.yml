@@ -43,17 +43,12 @@ jobs:
 
       - name: Extract Ollama
         if: env.NEEDS_UPDATE == 'true'
+        shell: cmd
         run: |
-          Write-Host "Extracting to $pwd\ollama..."
-          # Added /SP- to skip startup prompt and /SUPPRESSMSGBOXES to avoid UI blocks
-          $process = Start-Process -FilePath ".\OllamaSetup.exe" -ArgumentList "/DIR=$pwd\ollama", "/VERYSILENT", "/NORESTART", "/SP-", "/SUPPRESSMSGBOXES" -PassThru -Wait
-          
-          if ($process.ExitCode -ne 0) {
-            Write-Error "Installer failed with exit code $($process.ExitCode)"
-            exit 1
-          }
-          
-          ls $pwd\ollama
+          echo Extracting to %CD%\ollama...
+          start /wait OllamaSetup.exe /DIR="%CD%\ollama" /VERYSILENT /NORESTART /SP- /SUPPRESSMSGBOXES
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+          dir "%CD%\ollama"
 
       - name: Get Version
         if: env.NEEDS_UPDATE == 'true'
