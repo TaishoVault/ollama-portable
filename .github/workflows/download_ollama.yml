@@ -99,7 +99,7 @@ jobs:
           # BUT standard windows zip doesn't support multi-part well.
           # Let's split into 1GB chunks.
           
-          7z a -tzip -mx9 -v2000m "redist.zip" "redist\*"
+          7z a -tzip -mx9 -v1000m "redist.zip" "redist\*"
 
       - name: Create Release
         if: env.NEEDS_UPDATE == 'true'
