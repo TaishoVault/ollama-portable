@@ -17,9 +17,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install InnoExtract
-        run: choco install innoextract
-
       - name: Download OllamaSetup.exe
         run: Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "OllamaSetup.exe"
 
@@ -47,25 +44,16 @@ jobs:
       - name: Extract Ollama
         if: env.NEEDS_UPDATE == 'true'
         run: |
-          # Use innoextract to avoid running the installer (which hangs on CI)
-          # -e: extract
-          # -d: destination
-          innoextract -e "OllamaSetup.exe" -d "extracted_files"
+          Write-Host "Extracting to $pwd\ollama..."
+          # Added /SP- to skip startup prompt and /SUPPRESSMSGBOXES to avoid UI blocks
+          $process = Start-Process -FilePath ".\OllamaSetup.exe" -ArgumentList "/DIR=$pwd\ollama", "/VERYSILENT", "/NORESTART", "/SP-", "/SUPPRESSMSGBOXES" -PassThru -Wait
           
-          # Inspect structure (debugging)
-          ls -R extracted_files
-          
-          # Move files to expected 'ollama' directory
-          # usually innoextract creates an 'app' folder for the main files
-          New-Item -ItemType Directory -Force -Path "ollama"
-          if (Test-Path "extracted_files\app") {
-            Get-ChildItem "extracted_files\app" | Move-Item -Destination "ollama"
-          } else {
-            # Fallback if structure is flat
-            Get-ChildItem "extracted_files" | Move-Item -Destination "ollama"
+          if ($process.ExitCode -ne 0) {
+            Write-Error "Installer failed with exit code $($process.ExitCode)"
+            exit 1
           }
           
-          ls -R ollama
+          ls $pwd\ollama
 
       - name: Get Version
         if: env.NEEDS_UPDATE == 'true'
