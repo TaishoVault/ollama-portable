@@ -86,16 +86,37 @@ jobs:
             Move-Item -Path "ollama\lib" -Destination "redist\lib"
           }
           
-          # Create Zips
-          Compress-Archive -Path "redist" -DestinationPath "redist.zip"
-          Compress-Archive -Path "ollama" -DestinationPath "ollama-$env:VERSION.zip"
+          # Compress using 7z to handle large files (splitting if needed, but here we just use max compression)
+          # GitHub release asset limit is 2GB. If it exceeds, we need to split.
+          # For now, let's try 7z with best compression to see if it fits, otherwise we split.
+          
+          # Compress ollama main folder
+          7z a -tzip -mx9 "ollama-$env:VERSION.zip" "ollama\*"
+          
+          # Compress redist folder - using 7z format might be better but let's stick to zip for compatibility unless size is issue
+          # The error says size > 2GB. 
+          # Let's use 7z to create a multi-part archive if it's too big, OR just use 7z format which has better compression.
+          # BUT standard windows zip doesn't support multi-part well.
+          # Let's split into 1GB chunks.
+          
+          7z a -tzip -mx9 -v2000m "redist.zip" "redist\*"
 
       - name: Create Release
         if: env.NEEDS_UPDATE == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create "v$env:VERSION" "ollama-$env:VERSION.zip" "redist.zip" --title "Ollama v$env:VERSION" --notes "Automated build from OllamaSetup.exe"
+          # Get list of files to upload (redist.zip.001, etc or just redist.zip)
+          $assets = Get-ChildItem "ollama-$env:VERSION.zip", "redist.zip*" | Select-Object -ExpandProperty Name
+          $assetsString = $assets -join " "
+          Write-Host "Uploading assets: $assetsString"
+          
+          # gh release create expects each file as a separate arg
+          # We can't pass a string with spaces directly in the way powershell handles args sometimes
+          # Let's run it via cmd/bash or construct the command string
+          
+          $cmd = "gh release create ""v$env:VERSION"" $assetsString --title ""Ollama v$env:VERSION"" --notes ""Automated build from OllamaSetup.exe"""
+          Invoke-Expression $cmd
 
       - name: Update MD5 Tracking
         if: env.NEEDS_UPDATE == 'true'
