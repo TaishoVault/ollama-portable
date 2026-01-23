@@ -2,12 +2,16 @@ name: Download and Repackage Ollama
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * *' # Check daily
 
 permissions:
   contents: write
 
 jobs:
-  repackage:
+  check-and-release:
     runs-on: windows-latest
     steps:
       - name: Checkout
@@ -16,18 +20,40 @@ jobs:
       - name: Download OllamaSetup.exe
         run: Invoke-WebRequest -Uri "https://ollama.com/download/OllamaSetup.exe" -OutFile "OllamaSetup.exe"
 
+      - name: Check for Updates
+        id: check_update
+        run: |
+          $hash = (Get-FileHash "OllamaSetup.exe" -Algorithm MD5).Hash
+          Write-Host "Current Hash: $hash"
+          
+          $prevHash = ""
+          if (Test-Path "ollama.md5") {
+            $prevHash = Get-Content "ollama.md5"
+            Write-Host "Previous Hash: $prevHash"
+          }
+
+          if ($hash -ne $prevHash) {
+            Write-Host "Update detected!"
+            echo "NEEDS_UPDATE=true" >> $env:GITHUB_ENV
+            echo "NEW_HASH=$hash" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "No update necessary."
+            echo "NEEDS_UPDATE=false" >> $env:GITHUB_ENV
+          }
+
       - name: Extract Ollama
+        if: env.NEEDS_UPDATE == 'true'
         run: |
           Write-Host "Extracting to $pwd\ollama..."
           Start-Process -FilePath ".\OllamaSetup.exe" -ArgumentList "/DIR=$pwd\ollama", "/VERYSILENT", "/NORESTART" -Wait
           ls $pwd\ollama
 
       - name: Get Version
+        if: env.NEEDS_UPDATE == 'true'
         id: get_version
         run: |
           $verOutput = & .\ollama\ollama.exe version
           Write-Host "Version output: $verOutput"
-          # Parsing "ollama version is 0.1.27" or similar
           if ($verOutput -match "(\d+\.\d+\.\d+)") {
             $version = $matches[1]
             Write-Host "Detected Version: $version"
@@ -38,26 +64,36 @@ jobs:
           }
 
       - name: Prepare Redist and Zips
+        if: env.NEEDS_UPDATE == 'true'
         run: |
+          # Copy portable script
+          Copy-Item -Path "ollama_portable.bat" -Destination "ollama\ollama_portable.bat"
+          
           # Create redist structure
           New-Item -ItemType Directory -Force -Path "redist"
           
           # Move lib
           if (Test-Path "ollama\lib") {
             Move-Item -Path "ollama\lib" -Destination "redist\lib"
-          } else {
-            Write-Warning "ollama\lib folder not found. Skipping move."
           }
           
           # Create Zips
-          # redist.zip
           Compress-Archive -Path "redist" -DestinationPath "redist.zip"
-          
-          # ollama-{version}.zip
           Compress-Archive -Path "ollama" -DestinationPath "ollama-$env:VERSION.zip"
 
       - name: Create Release
+        if: env.NEEDS_UPDATE == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "v$env:VERSION" "ollama-$env:VERSION.zip" "redist.zip" --title "Ollama v$env:VERSION" --notes "Automated build from OllamaSetup.exe"
+
+      - name: Update MD5 Tracking
+        if: env.NEEDS_UPDATE == 'true'
+        run: |
+          $env:NEW_HASH | Out-File "ollama.md5" -NoNewline -Encoding ascii
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ollama.md5
+          git commit -m "Update ollama.md5 to $env:NEW_HASH [skip ci]"
+          git push
