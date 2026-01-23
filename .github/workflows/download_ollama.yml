@@ -46,8 +46,15 @@ jobs:
         shell: cmd
         run: |
           echo Extracting to %CD%\ollama...
-          start /wait OllamaSetup.exe /DIR="%CD%\ollama" /VERYSILENT /NORESTART /SP- /SUPPRESSMSGBOXES
-          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+          OllamaSetup.exe /DIR="%CD%\ollama" /VERYSILENT /NORESTART /SP- /SUPPRESSMSGBOXES
+          
+          REM Wait for installer to finish since we are not using start /wait
+          :loop
+          timeout /t 2 >nul
+          tasklist /fi "imagename eq OllamaSetup.exe" | find "OllamaSetup.exe" >nul
+          if %ERRORLEVEL%==0 goto loop
+          
+          echo Extraction complete.
           dir "%CD%\ollama"
 
       - name: Get Version
